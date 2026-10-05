@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rockfall Breakthrough</title>
+<style>
+:root{--bg:#faf9f5;--fg:#1f1e1d;--mut:#6b6a65;--c1:#f1efe8;--c2:#d3d1c7;--you:#d85a30;--ai:#1d9e75;--rock:#5f5e5a;--warn:#e24b4a;box-sizing:border-box;padding:env(safe-area-inset-top,0px) 12px env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1f1e1d;--fg:#faf9f5;--mut:#b4b2a9;--c1:#3a3936;--c2:#2c2b29;--rock:#b4b2a9}}
+:root[data-theme="dark"]{--bg:#1f1e1d;--fg:#faf9f5;--mut:#b4b2a9;--c1:#3a3936;--c2:#2c2b29;--rock:#b4b2a9}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center}
+h1{font-size:20px;font-weight:500;margin:14px 0 4px}
+#st{font-size:16px;min-height:24px;margin:6px 0}
+#nt{font-size:13px;color:var(--mut);min-height:32px;padding:0 8px}
+#board{display:grid;grid-template-columns:repeat(6,1fr);width:min(92vw,440px);margin:8px auto;border-radius:12px;overflow:hidden;border:1px solid var(--c2)}
+.cell{aspect-ratio:1;position:relative;display:flex;align-items:center;justify-content:center;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.cell.d{background:var(--c2)}.cell.l{background:var(--c1)}
+.p{width:68%;height:68%;border-radius:50%}
+.p.W{background:var(--you)}.p.B{background:var(--ai)}
+.cell.sel .p{outline:3px solid var(--fg);outline-offset:2px}
+.cell.doom .p{outline:3px dashed var(--warn);outline-offset:2px}
+.rock{width:78%;height:78%;border-radius:8px;background:var(--rock)}
+.inc{width:70%;height:70%;border:2px dashed var(--warn);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--warn);font-weight:500;font-size:14px}
+.dot{position:absolute;width:26%;height:26%;border-radius:50%;background:var(--fg);opacity:.35}
+.dot.cap{width:84%;height:84%;background:none;border:3px solid var(--warn);opacity:1}
+.bar{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:10px 0}
+button.b{font:inherit;font-size:14px;padding:8px 14px;border-radius:8px;border:1px solid var(--c2);background:var(--c1);color:var(--fg);cursor:pointer}
+button.b.on{border-color:var(--fg);font-weight:500}
+.lg{font-size:13px;color:var(--mut);margin:8px 0 16px}
+</style></head><body>
+<h1>Rockfall Breakthrough</h1>
+<div id="st"></div>
+<div id="board"></div>
+<div id="nt"></div>
+<div class="bar" id="lv"></div>
+<div class="bar"><button class="b" id="nw">New game</button></div>
+<div class="lg">Tap a piece, then tap where to move. Reach the top row to win. Every 4th move a rock lands on the dashed square and crushes any pawn there.</div>
+<script>
+const N=6,E=".",H="W",A="B",R="#",EVERY=4,INF=1e9;
+let G={};
+const enemy=p=>p===H?A:H, dir=p=>p===A?1:-1;
+const name=(r,c)=>"abcdef"[c]+(N-r);
+function newBoard(){const b=Array.from({length:N},()=>Array(N).fill(E));for(let c=0;c<N;c++){b[0][c]=b[1][c]=A;b[N-2][c]=b[N-1][c]=H}return b}
+function moves(b,p){const d=dir(p),o=[];for(let r=0;r<N;r++)for(let c=0;c<N;c++){if(b[r][c]!==p)continue;const nr=r+d;if(nr<0||nr>=N)continue;if(b[nr][c]===E)o.push([r,c,nr,c]);for(const dc of[-1,1]){const nc=c+dc;if(nc>=0&&nc<N&&(b[nr][nc]===E||b[nr][nc]===enemy(p)))o.push([r,c,nr,nc])}}return o}
+function nextRock(ply,s){return{sq:s[Math.floor(ply/EVERY)%s.length],left:EVERY-ply%EVERY}}
+function apply(b,m,ply,s){const nb=b.map(r=>r.slice());nb[m[2]][m[3]]=nb[m[0]][m[1]];nb[m[0]][m[1]]=E;ply++;if(ply%EVERY===0){const f=s[(ply/EVERY-1)%s.length];nb[f[0]][f[1]]=R}return[nb,ply]}
+function winner(b){for(let c=0;c<N;c++){if(b[N-1][c]===A)return A;if(b[0][c]===H)return H}const f=b.flat();if(!f.includes(A))return H;if(!f.includes(H))return A;return null}
+async function init(){const d=G.depth||4;let s=[[2,2],[3,3],[1,4],[4,1],[2,5],[3,0],[1,2],[4,4],[2,0],[3,5]],ok=true;try{s=(await(await fetch('/api/new')).json()).schedule}catch(e){ok=false}G={b:newBoard(),ply:0,turn:H,sel:null,legal:[],depth:d,s:s,over:false,busy:false,note:ok?'':'Server not reachable. Run app.py first.'};draw()}
+function done(){let w=winner(G.b);if(!w&&!moves(G.b,G.turn).length)w=enemy(G.turn);if(w){G.over=true;G.msg=w===H?"You win!":"The AI wins!";return true}return false}
+function draw(){
+const bd=document.getElementById("board");bd.innerHTML="";const nr=nextRock(G.ply,G.s);
+for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+const v=G.b[r][c],x=document.createElement("button");x.className="cell "+((r+c)%2?"d":"l");x.dataset.r=r;x.dataset.c=c;x.setAttribute("aria-label",name(r,c));
+const hit=!G.over&&nr.sq[0]===r&&nr.sq[1]===c;
+if(G.sel&&G.sel[0]===r&&G.sel[1]===c)x.classList.add("sel");
+if(v===H||v===A){if(hit)x.classList.add("doom");x.innerHTML='<div class="p '+v+'"></div>'}
+else if(v===R)x.innerHTML='<div class="rock"></div>';
+else if(hit)x.innerHTML='<div class="inc">'+nr.left+'</div>';
+const lg=G.legal.find(m=>m[2]===r&&m[3]===c);
+if(lg)x.insertAdjacentHTML("beforeend",'<div class="dot'+(v===A?" cap":"")+'"></div>');
+bd.appendChild(x)}
+document.getElementById("st").textContent=G.over?G.msg:(G.turn===H?"Your turn":"AI is thinking...");
+document.getElementById("nt").textContent=G.note+(G.over?"":(G.note?" ":"")+"Rock lands in "+nr.left+" move"+(nr.left>1?"s":"")+" on "+name(nr.sq[0],nr.sq[1])+".");
+}
+function play(m){const[nb,np]=apply(G.b,m,G.ply,G.s);G.b=nb;G.ply=np;G.sel=null;G.legal=[];G.note=np%EVERY===0?"A rock fell on "+name(...G.s[(np/EVERY-1)%G.s.length])+".":"";G.turn=enemy(G.turn)}
+async function aiTurn(){if(G.over)return;let m;try{const r=await fetch('/api/ai-move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({board:G.b,ply:G.ply,depth:G.depth,schedule:G.s})});m=(await r.json()).move}catch(e){G.busy=false;G.note='Cannot reach the server. Is app.py running?';draw();return}G.busy=false;if(!m){done();draw();return}play(m);done();draw()}
+document.getElementById("board").addEventListener("click",e=>{
+const t=e.target.closest(".cell");if(!t||G.over||G.busy||G.turn!==H)return;
+const r=+t.dataset.r,c=+t.dataset.c,v=G.b[r][c];
+const m=G.legal.find(x=>x[2]===r&&x[3]===c);
+if(m){play(m);if(done()){draw();return}G.busy=true;draw();setTimeout(aiTurn,60);return}
+if(v===H){G.sel=[r,c];G.legal=moves(G.b,H).filter(x=>x[0]===r&&x[1]===c)}else{G.sel=null;G.legal=[]}
+draw()});
+const lv=document.getElementById("lv");
+[["Easy",2],["Medium",4],["Hard",5]].forEach(([n,d])=>{const b=document.createElement("button");b.className="b";b.textContent=n;b.onclick=()=>{G.depth=d;mark();init()};lv.appendChild(b)});
+function mark(){[...lv.children].forEach((b,i)=>b.classList.toggle("on",[2,4,5][i]===G.depth))}
+document.getElementById("nw").onclick=init;
+G.depth=4;init();mark();
+</script></body></html>
